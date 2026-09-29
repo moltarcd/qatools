@@ -1,0 +1,35 @@
+# Automatización y Capturas
+pyautogui
+
+# Manipulación de Documentos
+python-docx
+
+# Utilidades de Red (Para tus pruebas de API/Legacy)
+requests
+telnetlib3
+
+# Empaquetado
+pyinstaller
+
+# SSH y conexiones remotas
+paramiko
+
+# Automatización de GUI
+pyautogui
+pygetwindow
+pyperclip
+
+# Criptografía
+cryptography
+
+# Windows GUI (win32gui viene en pywin32)
+pywin32
+
+# Interfaz de Escritorio Nativa (HTML/JS/Python)
+pywebview==5.1
+
+opencv-python==4.10.0.84
+
+
+
+

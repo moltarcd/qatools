@@ -1,0 +1,121 @@
+import random
+import os
+import base64
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.backends import default_backend
+
+# Configuración de cifrado AES (existente para PAN)
+CLAVE_SECRETA = b"hI9Hlt&aDraTAcHa6efRiq8jA1lstoSt"
+IV = b"abcdefgh12345678"
+BACKEND = default_backend()
+
+# NUEVO SECTRET: Configuración de cifrado para CVV2 (Cambia el secret, mantiene el resto)
+CLAVE_SECRETA_CVV2 = b"0123456789abcdef0123456789abcdef" 
+CLAVE_glca_CVV2= b"ABCDEF0123456789FEDCBA9876543210" 
+
+def calcular_dv_luhn_izquierda(pan_sin_dv: str) -> int:
+    digitos = [int(d) for d in pan_sin_dv]
+    suma = 0
+    for i, d in enumerate(digitos):
+        if i % 2 == 0:
+            doble = d * 2
+            if doble > 9: doble -= 9
+            suma += doble
+        else:
+            suma += d
+    return (10 - (suma % 10)) % 10
+
+def encrypt_text(text: str) -> str:
+    padder = padding.PKCS7(128).padder()
+    texto_plano_padded = padder.update(text.encode('utf-8')) + padder.finalize()
+    cipher = Cipher(algorithms.AES(CLAVE_SECRETA), modes.CBC(IV), backend=BACKEND)
+    encryptor = cipher.encryptor()
+    texto_cifrado = encryptor.update(texto_plano_padded) + encryptor.finalize()
+    return base64.b64encode(texto_cifrado).decode('utf-8')
+
+# =========================================================================
+# NUEVAS MEJORAS: DESENCRIPTAR PAN Y PROCESAMIENTO CRIPTOGRÁFICO DE CVV2
+# =========================================================================
+
+def desencriptar_pan_core(pan_encriptado: str) -> str:
+    """Desencripta un PAN en Base64 usando AES-CBC y remueve el padding PKCS7."""
+    try:
+        # Decodificamos el Base64 inicial para obtener los bytes cifrados
+        data_bytes = base64.b64decode(pan_encriptado.encode('utf-8'))
+        
+        # Inicializamos el descifrador con la clave del PAN
+        cipher = Cipher(algorithms.AES(CLAVE_SECRETA), modes.CBC(IV), backend=BACKEND)
+        decryptor = cipher.decryptor()
+        texto_padded = decryptor.update(data_bytes) + decryptor.finalize()
+        
+        # Quitamos el padding PKCS7 de forma segura
+        unpadder = padding.PKCS7(128).unpadder()
+        texto_plano = unpadder.update(texto_padded) + unpadder.finalize()
+        
+        return texto_plano.decode('utf-8')
+    except Exception as e:
+        raise Exception(f"Error al descifrar el PAN (Verifique que el token sea correcto): {str(e)}")
+
+def procesar_cripto_cvv2(operacion: str, valor: str) -> str:
+    """Cifra o descifra el CVV2 usando la misma configuración pero con la clave de CVV2."""
+    try:
+        if operacion == "ENCRIPTAR_CVV2":
+            # Agregamos padding PKCS7 al CVV2 de entrada
+            padder = padding.PKCS7(128).padder()
+            texto_plano_padded = padder.update(valor.encode('utf-8')) + padder.finalize()
+            
+            # Ciframos usando CLAVE_SECRETA_CVV2
+            cipher = Cipher(algorithms.AES(CLAVE_SECRETA_CVV2), modes.CBC(IV), backend=BACKEND)
+            encryptor = cipher.encryptor()
+            texto_cifrado = encryptor.update(texto_plano_padded) + encryptor.finalize()
+            
+            return base64.b64encode(texto_cifrado).decode('utf-8')
+            
+        elif operacion == "DESENCRIPTAR_CVV2":
+            # Decodificamos el Base64 de entrada
+            data_bytes = base64.b64decode(valor.encode('utf-8'))
+            
+            # Desciframos usando CLAVE_SECRETA_CVV2
+            cipher = Cipher(algorithms.AES(CLAVE_glca_CVV2), modes.CBC(IV), backend=BACKEND)
+            decryptor = cipher.decryptor()
+            texto_padded = decryptor.update(data_bytes) + decryptor.finalize()
+            
+            # Quitamos el padding PKCS7
+            unpadder = padding.PKCS7(128).unpadder()
+            texto_plano = unpadder.update(texto_padded) + unpadder.finalize()
+            
+            return texto_plano.decode('utf-8')
+            
+    except Exception as e:
+        raise Exception(f"Fallo en la operación criptográfica del CVV2: {str(e)}")
+
+
+def flujo_completo_tarjetas(prefijo, cantidad=10):
+    """Esta es la función que llamará el botón del HTML"""
+    try:
+        directorio = r"C:\Proyectos\qatools\qatools_outputs"
+        os.makedirs(directorio, exist_ok=True)
+        
+        resultados = []
+        for _ in range(int(cantidad)):
+            sufijo = random.randint(10_000_00, 99_999_99)
+            pan_sin_dv = f"{prefijo}{sufijo}"
+            dv = calcular_dv_luhn_izquierda(pan_sin_dv)
+            pan_completo = f"{pan_sin_dv}{dv}"
+            pan_encriptado = encrypt_text(pan_completo)
+            
+            resultados.append({
+                "completo": pan_completo,
+                "encriptado": pan_encriptado
+            })
+            
+        # Opcional: Guardar en archivo como hacías antes
+        ruta_txt = os.path.join(directorio, "ultimas_generadas.txt")
+        with open(ruta_txt, "w") as f:
+            for r in resultados:
+                f.write(f"{r['completo']}\t{r['encriptado']}\n")
+
+        return {"status": "success", "data": resultados, "path": ruta_txt}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

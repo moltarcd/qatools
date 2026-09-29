@@ -1,0 +1,130 @@
+import threading
+import time
+import re
+import paramiko
+
+class UnixLogMonitor:
+    def __init__(self):
+        self.ssh_client = None
+        self.monitor_thread = None
+        self.is_running = False
+        self.ansi_regex = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+
+    def iniciar_monitoreo(self, host, port, user, password, filepath, filter_path, window_instance):
+        """Inicia el monitoreo asíncrono adaptado a la estructura de bloques de JBoss/API."""
+        if self.is_running:
+            self.detener_monitoreo()
+
+        self.is_running = True
+        self.monitor_thread = threading.Thread(
+            target=self._tail_log_worker,
+            args=(host, port, user, password, filepath, filter_path, window_instance),
+            daemon=True
+        )
+        self.monitor_thread.start()
+
+    def detener_monitoreo(self):
+        self.is_running = False
+        if self.ssh_client:
+            try:
+                self.ssh_client.close()
+            except:
+                pass
+            self.ssh_client = None
+
+    def _tail_log_worker(self, host, port, user, password, filepath, filter_path, window):
+        try:
+            self.ssh_client = paramiko.SSHClient()
+            self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            
+            # Conexión SSH robusta para entornos bancarios
+            self.ssh_client.connect(
+                hostname=host, 
+                port=port, 
+                username=user, 
+                password=password, 
+                timeout=10,
+                banner_timeout=15
+            )
+
+            transport = self.ssh_client.get_transport()
+            channel = transport.open_session()
+            
+            # Traemos las últimas 250 líneas para pescar bloques enteros al conectar
+            command = f"tail -n 250 -f {filepath}"
+            channel.exec_command(command)
+
+            buffer = ""
+            bloque_actual = []
+            dentro_de_bloque = False
+
+            while self.is_running:
+                if channel.recv_ready():
+                    data = channel.recv(4096).decode('utf-8', errors='ignore')
+                    buffer += data
+
+                    while "\n" in buffer:
+                        linea, buffer = buffer.split("\n", 1)
+                        # Limpieza estricta de caracteres de control ANSI y saltos de carro
+                        linea_limpia = self.ansi_regex.sub('', linea).replace('\r', '').strip()
+
+                        if not linea_limpia:
+                            continue
+
+                        # DETECTOR DE INICIO: Líneas que contienen la cabecera del hilo log (ej: |INFO )
+                        if "|INFO" in linea_limpia or "Registro" in linea_limpia:
+                            # Si ya veníamos acumulando un bloque viejo que no cerró bien, lo procesamos por descarte
+                            if dentro_de_bloque and bloque_actual:
+                                self._evaluar_y_enviar_bloque(bloque_actual, filter_path, window)
+                            
+                            dentro_de_bloque = True
+                            bloque_actual = [linea_limpia]
+
+                        # DETECTOR DE CIERRE: La línea de métrica final que corta el bloque
+                        elif linea_limpia.startswith("Duration:"):
+                            if dentro_de_bloque:
+                                bloque_actual.append(linea_limpia)
+                                # Cerramos estado y evaluamos el bloque completo acumulado
+                                self._evaluar_y_enviar_bloque(bloque_actual, filter_path, window)
+                                dentro_de_bloque = False
+                                bloque_actual = []
+                            else:
+                                # Si por alguna razón llegó huérfana y no hay filtro, la mostramos
+                                if not filter_path:
+                                    window.evaluate_js(f"window.agregarLineaLogUnix({repr(linea_limpia)});")
+                        
+                        # ACUMULACIÓN: Campos intermedios (In Date, Path, Request, Response, etc.)
+                        else:
+                            if dentro_de_bloque:
+                                bloque_actual.append(linea_limpia)
+                            else:
+                                # Trazas sueltas del servidor fuera de transacciones de negocio
+                                if not filter_path:
+                                    window.evaluate_js(f"window.agregarLineaLogUnix({repr(linea_limpia)});")
+                else:
+                    time.sleep(0.05)
+
+                if channel.exit_status_ready():
+                    break
+
+        except Exception as e:
+            error_msg = f"--- [ERROR SSH]: {str(e)} ---"
+            window.evaluate_js(f"window.agregarLineaLogUnix({repr(error_msg)});")
+        finally:
+            self.detener_monitoreo()
+
+    def _evaluar_y_enviar_bloque(self, bloque, filter_path, window):
+        """Valida las reglas de negocio del filtro e inyecta el bloque formateado en la UI."""
+        texto_completo = "\n".join(bloque)
+        
+        if filter_path:
+            # Buscamos de forma elástica la subcadena dentro de la línea 'Path:'
+            # Ignoramos mayúsculas/minúsculas y espacios intermedios para blindar la búsqueda
+            match_path = re.search(rf"Path:\s*.*{re.escape(filter_path.strip())}", texto_completo, re.IGNORECASE)
+            if match_path:
+                # Agregamos un separador visual estético en la UI para delimitar dónde termina un bloque y empieza el otro
+                bloque_con_separador = texto_completo + "\n" + "─" * 60
+                window.evaluate_js(f"window.agregarLineaLogUnix({repr(bloque_con_separador)});")
+        else:
+            # Comportamiento normal si el filtro está vacío
+            window.evaluate_js(f"window.agregarLineaLogUnix({texto_completo});")

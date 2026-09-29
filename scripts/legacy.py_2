@@ -1,0 +1,299 @@
+import pyautogui
+import time
+import pyperclip
+from datetime import datetime
+import pygetwindow as gw
+import win32gui
+import win32con
+import os
+import asyncio
+import telnetlib3
+import re
+
+# ==========================================
+# SCRIPT 1: CAPTURA CAF 
+# ==========================================
+
+def clean_text(text):
+    lines = text.split('\n')
+    cleaned_lines = []
+    prev_line_was_empty = False
+    
+    for line in lines:
+        stripped_line = line.rstrip()
+        if not stripped_line:
+            if not prev_line_was_empty:
+                cleaned_lines.append(stripped_line)
+                prev_line_was_empty = True
+        else:
+            cleaned_lines.append(stripped_line)
+            prev_line_was_empty = False
+    
+    return '\n'.join(cleaned_lines)
+
+def bring_window_to_foreground(window_title):
+    try:
+        win = gw.getWindowsWithTitle(window_title)[0]
+        if not win.isMinimized:
+            win32gui.ShowWindow(win._hWnd, win32con.SW_RESTORE)
+        win32gui.SetForegroundWindow(win._hWnd)
+        return True
+    except IndexError:
+        return False
+
+def ejecutar_captura_outsideview(num_captures, delay, output_folder):
+    target_title = "OutsideView - Diario* - CAF"
+    
+    # Validar que los tipos de datos sean correctos (llegan como strings desde JS)
+    num_captures = int(num_captures)
+    delay = float(delay)
+    
+    if not output_folder.strip():
+        output_folder = r"C:\Proyectos\capturascaf"
+
+    os.makedirs(output_folder, exist_ok=True)
+
+    if not bring_window_to_foreground(target_title):
+        return {
+            "status": "error", 
+            "message": f"No se encontró ninguna ventana activa con el título exacto: '{target_title}'"
+        }
+
+    captured_data = []
+    # Margen de tiempo para el cambio de foco de ventana
+    time.sleep(1.5)
+    
+    for i in range(num_captures):
+        bring_window_to_foreground(target_title)
+        time.sleep(delay)
+
+        pyautogui.hotkey('ctrl', 'a')
+        time.sleep(delay)
+        
+        pyautogui.hotkey('ctrl', 'c')
+        time.sleep(delay)
+
+        pyautogui.press('f9')
+        time.sleep(delay)
+
+        try:
+            clipboard_data = pyperclip.paste()
+            cleaned_data = clean_text(clipboard_data)
+            captured_data.append(cleaned_data)
+        except Exception as e:
+            return {"status": "error", "message": f"Fallo al acceder al portapapeles: {str(e)}"}
+        
+        time.sleep(delay)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"captura_{timestamp}.txt"
+    full_path = os.path.join(output_folder, filename)
+    
+    with open(full_path, 'w', encoding='utf-8') as f:
+        for index, data in enumerate(captured_data, 1):
+            f.write(f"=== CAPTURA {index} ===\n")
+            f.write(data)
+            f.write("\n\n")
+            
+    return {
+        "status": "success",
+        "path": full_path,
+        "filename": filename,
+        "count": num_captures
+    }
+    
+# =====================================================================
+# SCRIPT 2: TACL OBEY RUNNER (HP NONSTOP) - INTEGRACIÓN OPTIMIZADA
+# =====================================================================
+
+async def _obey_telnet_logic(host, port, user, password, subvol, obey_name):
+    try:
+        port = int(port)
+    except ValueError:
+        return {"status": "error", "message": "El puerto debe ser un número válido."}
+
+    try:
+        print(f"[DEBUG-TELNET] Abriendo socket con {host}:{port}...")
+        reader, writer = await telnetlib3.open_connection(
+            host, 
+            port, 
+            term='vt100',
+            cols=80,
+            rows=24
+        )
+        
+        # --- FUNCIÓN DE LECTURA BAJO DEMANDA ---
+        async def leer_hasta(palabra_clave, timeout_max=4.0):
+            """Espera hasta encontrar un string fijo o que salte el timeout."""
+            acumulado = ""
+            while palabra_clave not in acumulado:
+                try:
+                    raw_chunk = await asyncio.wait_for(reader.read(1024), timeout=timeout_max)
+                    if not raw_chunk:
+                        break
+                    chunk_str = raw_chunk.decode('ascii', errors='replace') if isinstance(raw_chunk, bytes) else str(raw_chunk)
+                    acumulado += chunk_str
+                except asyncio.TimeoutError:
+                    break
+            return acumulado
+
+        async def leer_hasta_prompt_regex(timeout_max=4.0):
+            """Espera cualquier línea que termine con > (ej: TACL 4> o $DUFFY CCACERES 3>)."""
+            acumulado = ""
+            pattern = re.compile(r'.*>\s*$')
+            while True:
+                try:
+                    raw_chunk = await asyncio.wait_for(reader.read(1024), timeout=timeout_max)
+                    if not raw_chunk:
+                        break
+                    chunk_str = raw_chunk.decode('ascii', errors='replace') if isinstance(raw_chunk, bytes) else str(raw_chunk)
+                    acumulado += chunk_str
+                    if any(pattern.match(line.strip()) for line in acumulado.split('\n')):
+                        break
+                except asyncio.TimeoutError:
+                    break
+            return acumulado
+
+        # 2. FLUJO DE LOGIN PASO A PASO (Sincronía estricta)
+        print("[DEBUG-TELNET] Esperando menú inicial...")
+        await leer_hasta("Enter Choice>")
+        
+        print("[DEBUG-TELNET] Enviando comando: TACLN")
+        writer.write("TACLN\r\n")
+        await writer.drain()
+        
+        print("[DEBUG-TELNET] Esperando banner de TACL...")
+        await leer_hasta("TACL")
+        
+        print(f"[DEBUG-TELNET] Enviando comando: LOGON {user}")
+        writer.write(f"LOGON {user}\r\n")
+        await writer.drain()
+        
+        print("[DEBUG-TELNET] Esperando solicitud de Password...")
+        await leer_hasta("Password:")
+        
+        print("[DEBUG-TELNET] Enviando Contraseña...")
+        writer.write(f"{password}\r\n")
+        await writer.drain()
+        
+        # --- NUEVO: ESPERA DE VALIDACIÓN DE CREDENCIALES ---
+        print("[DEBUG-TELNET] Esperando confirmación de login del mainframe...")
+        await asyncio.sleep(0.8) 
+        
+        print("[DEBUG-TELNET] Buscando prompt activo de TACL...")
+        respuesta_autenticacion = await leer_hasta_prompt_regex(timeout_max=4.0)
+        
+        if "frozen" in respuesta_autenticacion.lower() or "denied" in respuesta_autenticacion.lower():
+            print("[DEBUG-TELNET] ERROR CRÍTICO: El usuario está bloqueado en la Tandem.")
+            return {
+                "status": "error", 
+                "message": "ACCESO DENEGADO: El usuario se encuentra congelado o bloqueado en la Tandem."
+            }
+        
+        if "invalid" in respuesta_autenticacion.lower():
+            print("[DEBUG-TELNET] ERROR CRÍTICO: Password o Usuario inválido.")
+            return {
+                "status": "error", 
+                "message": "AUTENTICACIÓN FALLIDA: Contraseña o usuario incorrecto en el entorno."
+            }
+
+        print("[DEBUG-TELNET] Autenticación completada y confirmada.")
+
+        # 3. CAMBIO DE SUBVOLUMEN
+        print(f"[DEBUG-TELNET] Cambiando a subvolumen: v {subvol}")
+        writer.write(f"v {subvol}\r\n")
+        await writer.drain()
+        
+        # Esperamos a que termine el cambio de subvolumen antes de mandar el OBEY
+        await asyncio.sleep(0.3)
+        await leer_hasta_prompt_regex(timeout_max=3.0)
+        
+        # 4. EJECUCIÓN DEL OBEY
+        print(f"[DEBUG-TELNET] Lanzando macro: OBEY {obey_name}")
+        writer.write(f"OBEY {obey_name}\r\n")
+        await writer.drain()
+        
+        # --- LECTURA DETERMINÍSTICA BASADA EN EL PROMPT FINAL ---
+        output_log = ""
+        pattern_final = re.compile(r'.*>\s*$')
+        
+        print("[DEBUG-TELNET] Capturando reporte completo hasta recuperar el prompt...")
+        
+        # Le damos un margen de tiempo máximo total de 12 segundos para capturar todo el reporte
+        tiempo_limite = 12.0 
+        inicio_captura = asyncio.get_event_loop().time()
+        
+        while True:
+            try:
+                tiempo_transcurrido = asyncio.get_event_loop().time() - inicio_captura
+                if tiempo_transcurrido >= tiempo_limite:
+                    print("[DEBUG-TELNET] Se alcanzó el tiempo máximo de espera para el reporte.")
+                    break
+                    
+                raw_chunk = await asyncio.wait_for(reader.read(4096), timeout=3.0)
+                if not raw_chunk:
+                    break
+                
+                chunk_str = raw_chunk.decode('ascii', errors='replace') if isinstance(raw_chunk, bytes) else str(raw_chunk)
+                output_log += chunk_str
+                
+                # Evaluamos si la última línea del bloque es el prompt de TACL indicando el FIN del reporte
+                lineas = output_log.strip().split('\n')
+                if lineas and pattern_final.match(lineas[-1].strip()):
+                    if "STARTED" in output_log or "CURRENT" in output_log:
+                        print("[DEBUG-TELNET] Prompt final detectado con éxito.")
+                        break
+            except asyncio.TimeoutError:
+                if output_log.strip():
+                    break
+        
+        print("[DEBUG-TELNET] Proceso de captura completado de forma exitosa.")
+        
+        # --- LIMPIEZA DE ANSI Y FORMATEO ---
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        log_limpio = ansi_escape.sub('', output_log)
+        log_limpio = log_limpio.replace('\r\r\n', '\n').replace('\r\n', '\n')
+        
+        # --- NUEVO FILTRO: CORTAR DESDE EL COMANDO DE USER SET ---
+        marker = "User secured for access to 7 node(s)."
+        if marker in log_limpio:
+            # Dividimos por el marcador y tomamos la segunda parte
+            log_limpio = marker + log_limpio.split(marker, 1)[1]
+            
+            # Opcional: Si además querés limpiar el prompt final "$DUFFY..." y el #unframe
+            # Podrías agregar un rstrip para quitar la basura del final
+            log_limpio = log_limpio.split("#unframe")[0].strip()
+
+        # =============================================================
+        # >>> PRINTS MÁGICOS DE DEBUG <<<
+        print("\n============= TEXTO REAL CAPTURADO DE LA TANDEM =============")
+        print(log_limpio)
+        print("=============================================================\n")
+        # =============================================================
+
+        return {"status": "success", "log": log_limpio}
+        
+    except Exception as e:
+        print(f"[DEBUG-TELNET] EXCEPCIÓN EN PROCESO: {str(e)}")
+        return {"status": "error", "message": str(e)}
+        
+    finally:
+        try:
+            writer.write("LOGOFF\r\n")
+            await asyncio.sleep(0.05) 
+            writer.close()
+        except:
+            pass
+
+def ejecutar_flujo_obey(host, port, user, password, subvol, obey_name):
+    """Wrapper síncrono que actúa de puente entre PyWebView y la subrutina asíncrona."""
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        resultado = loop.run_until_complete(
+            _obey_telnet_logic(host, port, user, password, subvol, obey_name)
+        )
+        loop.close()
+        return resultado
+    except Exception as e:
+        return {"status": "error", "message": f"Fallo al inicializar canal Telnet: {str(e)}"}

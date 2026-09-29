@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QA Tools Toolkit</title>
+    
+    <style>
+        :root {
+            --bg: #0e0f11;
+            --bg-card: #16181c;
+            --border: #2a2d35;
+            --text: #e2e4ea;
+            --text-muted: #8b8f9e;
+            --accent: #4ade80; 
+            --accent-bg: rgba(74, 222, 128, 0.08);
+            --sidebar-width: 240px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex; height: 100vh; overflow: hidden;
+        }
+
+        /* BARRA LATERAL PRINCIPAL */
+        .sidebar {
+            width: var(--sidebar-width);
+            background-color: var(--bg-card);
+            border-right: 1px solid var(--border);
+            display: flex; flex-direction: column; padding: 20px 0;
+        }
+        .sidebar-brand {
+            padding: 0 20px 20px 20px; font-size: 1.1rem; font-weight: bold;
+            letter-spacing: 1px; color: var(--text); border-bottom: 1px solid var(--border); margin-bottom: 20px;
+        }
+        .sidebar-menu { list-style: none; }
+        .menu-item {
+            padding: 12px 20px; color: var(--text-muted); cursor: pointer;
+            font-size: 0.95rem; transition: all 0.2s; display: flex; align-items: center;
+        }
+        .menu-item:hover { background: rgba(255, 255, 255, 0.03); color: var(--text); }
+        .menu-item.active {
+            color: var(--accent); background: var(--accent-bg); border-left: 4px solid var(--accent); font-weight: 600;
+        }
+
+        /* CONTENEDOR PRINCIPAL */
+        .main-content { flex: 1; padding: 40px; overflow-y: auto; }
+        .tab-view { display: none; max-width: 750px; }
+        
+        h1 { font-size: 1.6rem; margin-top: 0; margin-bottom: 8px; }
+        .subtitle { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 24px; }
+        .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 24px; }
+        
+        /* SUB-NAVEGACIÓN INTERNA (SUB-TABS) */
+        .sub-tab-container {
+            display: flex; border-bottom: 1px solid var(--border); margin-bottom: 20px; gap: 8px;
+        }
+        .sub-tab {
+            padding: 8px 16px; color: var(--text-muted); cursor: pointer; font-size: 0.9rem;
+            border-radius: 4px 4px 0 0; border: 1px solid transparent; border-bottom: none; margin-bottom: -1px;
+        }
+        .sub-tab:hover { color: var(--text); }
+        .sub-tab.active {
+            color: var(--accent); background-color: var(--bg-card); border-color: var(--border); font-weight: 500;
+        }
+        .sub-content { display: none; }
+
+        /* FORMULARIOS & COMPONENTES */
+        .form-group { margin-bottom: 16px; }
+        label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+        input { width: 100%; padding: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); }
+        input:focus { outline: none; border-color: var(--accent); }
+        .btn {
+            background: var(--accent-bg); border: 1px solid var(--accent); color: var(--accent);
+            padding: 12px 20px; border-radius: 4px; cursor: pointer; font-weight: 600; width: 100%; transition: background 0.2s; margin-top: 10px;
+        }
+        .btn:hover { background: rgba(74, 222, 128, 0.18); }
+        .output { margin-top: 16px; background: var(--bg); border: 1px solid var(--border); padding: 14px; border-radius: 4px; font-family: monospace; min-height: 50px; word-break: break-all; white-space: pre-wrap; }
+        
+        /* Estilos específicos para el Módulo Unix */
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .config-full-width {
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .input-group label {
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #a0aec0;
+        }
+
+        .input-group input {
+            background-color: #2d3748;
+            border: 1px solid #4a5568;
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 4px;
+            outline: none;
+        }
+
+        .input-group input:focus {
+            border-color: #63b3ed;
+        }
+
+        .actions-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        /* Consola Unix con Regla estricta de Selección de Texto */
+        .unix-output-log {
+            background-color: #0f172a;
+            border: 1px solid #1e293b;
+            border-radius: 6px;
+            padding: 15px;
+            height: 450px;
+            overflow-y: auto;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Courier New', Courier, monospace;
+            font-size: 13px;
+            color: #e2e8f0;
+            user-select: text !important;
+            -webkit-user-select: text !important;
+        }
+
+        .unix-output-log pre {
+            margin: 0;
+            white-space: pre;
+            word-break: normal;
+            overflow-x: auto;
+            color: #38bdf8;
+        }
+
+        /* Estados de Conexión */
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: auto;
+        }
+        .status-disconnected { background-color: #4a5568; color: #cbd5e0; }
+        .status-connected { background-color: #2f855a; color: #c6f6d5; animation: pulse 2s infinite; }
+        .status-loading { background-color: #c05621; color: #feebc8; }
+
+        @keyframes pulse {
+            0% { opacity: 0.8; }
+            50% { opacity: 1; }
+            100% { opacity: 0.8; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="sidebar-brand">QA TOOLS v1.0</div>
+        <ul class="sidebar-menu">
+            <li class="menu-item active" onclick="switchMainTab('tab-tarjetas', this)">💳 Emisión Tarjetas</li>
+            <li class="menu-item" onclick="switchMainTab('tab-legacy', this)">🖥️ Utilitarios Legacy</li>
+            <li class="menu-item" onclick="switchMainTab('tab-unix', this)">🐧 Monitoreo Unix</li>
+            <li class="menu-item" onclick="switchMainTab('tab-reportes', this)">📝 Reportes Word</li>
+        </ul>
+    </div>
+
+    <div class="main-content">
+        
+<div id="tab-tarjetas" class="tab-view" style="display: block;">
+            <h1>Módulo de Emisión y Tarjetas</h1>
+            <div class="subtitle">Herramientas visuales para generación automatizada y control de flujos de tarjetas.</div>
+            
+            <div class="sub-tab-container">
+                <div class="sub-tab active" onclick="switchSubTabTarjetas('sub-generacion-pan', this)">💳 Generación Masiva PANs</div>
+                <div class="sub-tab" onclick="switchSubTabTarjetas('sub-cripto-tarjetas', this)">🔐 Criptografía PAN / CVV2</div>
+                <div class="sub-tab" onclick="switchSubTabTarjetas('sub-denuncia-tarjeta', this)">⚠️ Denuncia Robo/Extravío</div>
+                <div class="sub-tab" onclick="switchSubTabTarjetas('sub-activacion-bot', this)">🤖 Activación Automatizada</div>
+            </div>
+
+            <div id="sub-generacion-pan" class="sub-content-tarjetas" style="display: block;">
+                <div class="card">
+                    <h3 style="margin-top:0; margin-bottom: 12px;">Emisión Masiva de PANs</h3>
+                    <div class="form-group">
+                        <label for="binInput">Prefijo BIN</label>
+                        <input type="text" id="binInput" value="43453105">
+                    </div>
+                    <div class="form-group">
+                        <label for="cantidadInput">Cantidad a Generar</label>
+                        <input type="number" id="cantidadInput" value="10">
+                    </div>
+                    <button class="btn" onclick="solicitarTarjeta()">Ejecutar Automatización</button>
+                    <div class="output" id="resultadoOutput">// Esperando acción...</div>
+                </div>
+            </div>
+
+            <div id="sub-cripto-tarjetas" class="sub-content-tarjetas" style="display: none;">
+                <div class="card">
+                    <h3 style="margin-top:0; margin-bottom: 12px;">Utilidades Criptográficas (AES / TripleDES)</h3>
+                    
+                    <div class="form-group">
+                        <label for="criptoOperacion">Tipo de Operación</label>
+                        <select id="criptoOperacion" style="width: 100%; padding: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text);" onchange="adaptarFormularioCripto()">
+                            <option value="DESENCRIPTAR_PAN">🔓 Desencriptar PAN (AES Core)</option>
+                            <option value="ENCRIPTAR_CVV2">🔒 Encriptar CVV2</option>
+                            <option value="DESENCRIPTAR_CVV2">🔓 Desencriptar CVV2</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label id="lblCriptoInput" for="criptoInputText">Dato a Procesar (PAN Encriptado / CVV2 Plano)</label>
+                        <input type="text" id="criptoInputText" placeholder="Ingrese el valor aquí...">
+                    </div>
+
+                    <button class="btn" onclick="ejecutarOperacionCripto()">Procesar Datos</button>
+                    <div class="output" id="resultadoCriptoOutput">// Esperando datos...</div>
+                </div>
+            </div>
+
+            <div id="sub-denuncia-tarjeta" class="sub-content-tarjetas" style="display: none;">
+                <div class="card">
+                    <h3 style="margin-top:0; margin-bottom: 12px;">Automatización de Denuncias</h3>
+                    <p style="color:var(--text-muted); margin-bottom: 15px;">Módulo preparado para inyectar la lógica transaccional de bloqueo de tarjetas en entornos de testing.</p>
+                    <div class="form-group">
+                        <label>Número de Tarjeta (PAN)</label>
+                        <input type="text" placeholder="Ej: 43453105XXXXXXXX" disabled>
+                    </div>
+                    <button class="btn" style="opacity: 0.5; cursor: not-allowed;" disabled>Ejecutar Bloqueo Critico</button>
+                </div>
+            </div>
+
+            <div id="sub-activacion-bot" class="sub-content-tarjetas" style="display: none;">
+                <div class="card">
+                    <h3 style="margin-top:0; margin-bottom: 12px;">Activación / Desactivación por Bot</h3>
+                    <p style="color:var(--text-muted)">[Disponible para integrar el flujo integrado del bot de mensajería o servicios core]</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-legacy" class="tab-view" style="display: none;">
+            <h1>Herramientas BASE24 </h1>
+            <div class="subtitle">Macros destinadas a la interacción con Tandem.</div>
+            
+            <div class="sub-tab-container">
+                <div class="sub-tab active" onclick="switchSubTab('sub-outsideview', this)">📸 OutsideView Capture</div>
+                <div class="sub-tab" onclick="switchSubTab('sub-obey', this)">🖥️ TACL OBEY Runner</div>
+                <div class="sub-tab" onclick="switchSubTab('sub-script3', this)">📜 Script 3</div>
+                <div class="sub-tab" onclick="switchSubTab('sub-script4', this)">📜 Script 4</div>
+                <div class="sub-tab" onclick="switchSubTab('sub-script5', this)">📜 Script 5</div>
+            </div>
+
+            <div id="sub-outsideview" class="sub-content" style="display: block;">
+                <div class="card">
+                    <h3 style="margin-top:0; margin-bottom: 12px;">Capturar Pantallas</h3>
+                    <div class="form-group">
+                        <label for="capturasLegacyInput">Cantidad de Capturas (Avanza con F9)</label>
+                        <input type="number" id="capturasLegacyInput" value="8">
+                    </div>
+                    <div class="form-group">
+                        <label for="delayLegacyInput">Delay(Segundos)</label>
+                        <input type="number" id="delayLegacyInput" value="0.3" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label for="rutaLegacyInput">Guardar Capturas en:</label>
+                        <input type="text" id="rutaLegacyInput" value="C:\Proyectos\certificacion-nds-emision\capturascaf">
+                    </div>
+                    <button class="btn" onclick="solicitarCapturaOutsideView()">Iniciar Captura</button>
+                    <div class="output" id="resultadoLegacyOutput">// Asegurate de tener OutsideView abierto...</div>
+                </div>
+            </div>
+
+            <div id="sub-obey" class="sub-content" style="display: none;">
+                <div class="card">
+                    <h3 style="margin-top:0; margin-bottom: 12px;">Ejecutor de Macros </h3>
+                    <div style="display: flex; gap: 16px;">
+                        <div class="form-group" style="flex: 2;">
+                            <label for="telnetHost">Host / IP Servidor</label>
+                            <input type="text" id="telnetHost" value="10.10.10.3">
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label for="telnetPort">Puerto</label>
+                            <input type="number" id="telnetPort" value="23">
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 16px;">
+                        <div class="form-group" style="flex: 1;">
+                            <label for="telnetUser">Usuario (TACL)</label>
+                            <input type="text" id="telnetUser" value="test.cert">
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label for="telnetPass">Password</label>
+                            <input type="password" id="telnetPass" value="Cert2606">
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 16px;">
+                        <div class="form-group" style="flex: 1;">
+                            <label for="telnetSubvol">Subvolumen</label>
+                            <input type="text" id="telnetSubvol" value="ccaceres">
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label for="telnetObey">Nombre del OBEY</label>
+                            <input type="text" id="telnetObey" value="STATUNRT">
+                        </div>
+                    </div>
+                    <button class="btn" onclick="solicitarEjecucionObey()">RUN</button>
+                    <div class="output" id="resultadoObeyOutput" style="font-size: 0.85rem; max-height: 250px; overflow-y: auto;">// Esperando conexión...</div>
+                </div>
+            </div>
+
+            <div id="sub-script3" class="sub-content" style="display: none;"><div class="card"><p style="color:var(--text-muted)">[Disponible para integrar Script 3]</p></div></div>
+            <div id="sub-script4" class="sub-content" style="display: none;"><div class="card"><p style="color:var(--text-muted)">[Disponible para integrar Script 4]</p></div></div>
+            <div id="sub-script5" class="sub-content" style="display: none;"><div class="card"><p style="color:var(--text-muted)">[Disponible para integrar Script 5]</p></div></div>
+        </div>
+
+        <div id="tab-unix" class="tab-view" style="display: none;">
+            <h1>Monitoreo de Logs Unix </h1>
+            <div class="subtitle">Conexión SSH en tiempo real para el seguimiento de logs.</div>
+
+            <div class="config-grid">
+                <div class="input-group">
+                    <label for="unix-host">Servidor (Host / IP)</label>
+                    <input type="text" id="unix-host" placeholder="192.168.1.X" value="10.10.32.108">
+                </div>
+                <div class="input-group">
+                    <label for="unix-port">Puerto</label>
+                    <input type="number" id="unix-port" value="22">
+                </div>
+                <div class="input-group">
+                    <label for="unix-user">Usuario</label>
+                    <input type="text" id="unix-user" placeholder="root / appuser" value="usux0004_logcert">
+                </div>
+                <div class="input-group">
+                    <label for="unix-pass">Contraseña</label>
+                    <input type="password" id="unix-pass" placeholder="••••••••" >
+                </div>
+            </div>
+
+            <div class="config-full-width">
+                <div class="input-group">
+                    <label for="unix-filepath">Path del Archivo Log</label>
+                    <input type="text" id="unix-filepath" placeholder="/var/log/nginx/error.log o /home/user/app/logs/base24.log" value="/zonas/local/pmctas2-jb6/jboss-eap-6.4/domain/servers/jboss6-cert2/log/CENTRODESERVICIOS_API.log">
+                </div>
+            </div>
+
+            <div class="actions-row">
+                <button id="btn-start-tail" class="btn btn-success" onclick="iniciarTailUnix()" style="margin-top:0; width:auto;">
+                    ▶ Iniciar Monitoreo
+                </button>
+                <button id="btn-stop-tail" class="btn btn-danger" onclick="detenerTailUnix()" disabled style="margin-top:0; width:auto;">
+                    ■ Detener
+                </button>
+                
+                <div class="input-group-filter" style="display: flex; align-items: center; gap: 5px; margin-left: 10px;">
+                    <label for="unix-filter-path" style="font-size: 12px; color: #a0aec0; white-space: nowrap; margin-bottom:0;">Filtrar Path:</label>
+                    <input type="text" id="unix-filter-path" placeholder="Ej: /rest/echo (Vacío = Todo)" style="background-color: #2d3748; border: 1px solid #4a5568; color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 13px; width: 220px;">
+                </div>
+
+                <button id="btn-clear-unix" class="btn btn-secondary" onclick="limpiarConsolaUnix()" style="margin-top:0; width:auto; margin-left: 10px;">
+                    Limpiar Consola
+                </button>
+                <span id="unix-status" class="status-badge status-disconnected">Desconectado</span>
+            </div>
+
+            <div class="console-container">
+                <div id="unix-console-output" class="unix-output-log"></div>
+            </div>
+        </div>
+
+        <div id="tab-reportes" class="tab-view" style="display: none;">
+            <h1>Generación de Evidencias</h1>
+            <div class="subtitle">Captura pantallas del flujo y arma el documento de certificación.</div>
+            <div class="card"><p style="color: var(--text-muted);">[Próximo módulo: Inyector python-docx]</p></div>
+        </div>
+
+    </div>
+
+    <script>
+        // CONTROL DE VISTAS PRINCIPALES (BARRA LATERAL)
+        function switchMainTab(tabId, menuItem) {
+            document.querySelectorAll('.main-content .tab-view').forEach(view => {
+                view.style.display = 'none';
+            });
+            document.querySelectorAll('.sidebar-menu .menu-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            document.getElementById(tabId).style.display = 'block';
+            menuItem.classList.add('active');
+        }
+
+        // CONTROL DE SUB-PESTAÑAS INTERNAS (LEGACY)
+        function switchSubTab(subTabId, subTabItem) {
+            document.querySelectorAll('#tab-legacy .sub-content').forEach(content => {
+                content.style.display = 'none';
+            });
+            document.querySelectorAll('#tab-legacy .sub-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            document.getElementById(subTabId).style.display = 'block';
+            subTabItem.classList.add('active');
+        }
+
+        // NUEVO: CONTROL DE SUB-PESTAÑAS INTERNAS (TARJETAS)
+        function switchSubTabTarjetas(subTabId, subTabItem) {
+            document.querySelectorAll('#tab-tarjetas .sub-content-tarjetas').forEach(content => {
+                content.style.display = 'none';
+            });
+            document.querySelectorAll('#tab-tarjetas .sub-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            document.getElementById(subTabId).style.display = 'block';
+            subTabItem.classList.add('active');
+        }
+
+        // INTEGRACIÓN BACKEND: EMISIÓN DE TARJETAS
+        async function solicitarTarjeta() {
+            const binValue = document.getElementById('binInput').value;
+            const cantidadValue = document.getElementById('cantidadInput').value;
+            const outputDiv = document.getElementById('resultadoOutput');
+            outputDiv.innerHTML = "Procesando encriptación AES...";
+            if (window.pywebview && window.pywebview.api) {
+                const respuesta = await window.pywebview.api.btn_generar_tarjeta_click(binValue, cantidadValue);
+                if (respuesta.status === "success") {
+                    let htmlResult = `<div style="color: #4ade80; margin-bottom:12px; font-weight:600;">✓ Guardado en: ${respuesta.path}</div>`;
+                    respuesta.data.forEach(t => {
+                        htmlResult += `PAN: ${t.completo} | AES: ${t.encriptado}\n`;
+                    });
+                    outputDiv.innerHTML = htmlResult;
+                } else { outputDiv.innerHTML = `Error: ${respuesta.message}`; }
+            }
+        }
+
+
+        // INTEGRACIÓN BACKEND: SCRIPT 1 (OUTSIDEVIEW)
+        async function solicitarCapturaOutsideView() {
+            const cantidad = document.getElementById('capturasLegacyInput').value;
+            const delay = document.getElementById('delayLegacyInput').value;
+            const ruta = document.getElementById('rutaLegacyInput').value;
+            const outputDiv = document.getElementById('resultadoLegacyOutput');
+            
+            outputDiv.innerHTML = "<span style='color: #fbbf24;'>Focuseando ventana OutsideView e iniciando ciclo de captura...</span>";
+
+            if (window.pywebview && window.pywebview.api) {
+                try {
+                    const respuesta = await window.pywebview.api.btn_captura_outsideview_click(cantidad, delay, ruta);
+                    if (respuesta.status === "success") {
+                        outputDiv.innerHTML = `✓ ¡Proceso completado con éxito!\nArchivo: ${respuesta.filename}\nDestino: ${respuesta.path}\nTotal capturas: ${respuesta.count}`;
+                    } else {
+                        outputDiv.innerHTML = `❌ ${respuesta.message}`;
+                    }
+                } catch (err) {
+                    outputDiv.innerHTML = "Error fatal en la ejecución del script.";
+                }
+            }
+        }
+
+// INTEGRACIÓN BACKEND: SCRIPT 2 (TELNET TACL OBEY)
+        async function solicitarEjecucionObey() {
+            const host = document.getElementById('telnetHost').value;
+            const port = document.getElementById('telnetPort').value;
+            const user = document.getElementById('telnetUser').value;
+            const pass = document.getElementById('telnetPass').value;
+            const subvol = document.getElementById('telnetSubvol').value;
+            const obey = document.getElementById('telnetObey').value;
+            const outputDiv = document.getElementById('resultadoObeyOutput');
+            
+            outputDiv.innerHTML = "<span style='color: #60a5fa;'>Iniciando handshake Telnet asíncrono y autenticando en TACLN...</span>";
+
+            if (window.pywebview && window.pywebview.api) {
+                try {
+                    const respuesta = await window.pywebview.api.btn_ejecutar_obey_click(host, port, user, pass, subvol, obey);
+                    
+                    if (respuesta.status === "success") {
+                        // 1. Ponemos el título en HTML
+                        outputDiv.innerHTML = `<span style='color: #4ade80; font-weight: bold;'>✓ Respuesta TACL recibida:</span><br><br>`;
+                        
+                        // 2. Creamos un contenedor <pre> para la grilla
+                        const preElement = document.createElement('pre');
+                        
+                        // 3. Aplicamos estilos en línea para sobreescribir el break-all y habilitar scroll
+                        preElement.style.fontFamily = "monospace";
+                        preElement.style.whiteSpace = "pre";
+                        preElement.style.wordBreak = "normal"; // Clave para no romper la tabla
+                        preElement.style.overflowX = "auto";
+                        preElement.style.paddingBottom = "10px";
+                        
+                        // 4. Usamos textContent (NO innerHTML) para que el navegador no confunda los '>' con código
+                        preElement.textContent = respuesta.log;
+                        
+                        outputDiv.appendChild(preElement);
+                    } else {
+                        outputDiv.innerHTML = `❌ Error de ejecución:<br><br>${respuesta.message}`;
+                    }
+                } catch (err) {
+                    outputDiv.innerHTML = "❌ Error crítico al conectar con el Backend.";
+                }
+            }
+        }
+
+// Variable para controlar si el scroll automático debe activarse
+let autoScrollUnix = true;
+
+function iniciarTailUnix() {
+    const host = document.getElementById('unix-host').value.trim();
+    const port = document.getElementById('unix-port').value.trim();
+    const user = document.getElementById('unix-user').value.trim();
+    const pass = document.getElementById('unix-pass').value;
+    const filepath = document.getElementById('unix-filepath').value.trim();
+    // Capturamos el filtro
+    const filterPath = document.getElementById('unix-filter-path').value.trim();
+
+    if (!host || !user || !filepath) {
+        alert("Por favor, completa los campos obligatorios: Servidor, Usuario y Ruta del Archivo.");
+        return;
+    }
+
+    document.getElementById('btn-start-tail').disabled = true;
+    document.getElementById('btn-stop-tail').disabled = false;
+    
+    const status = document.getElementById('unix-status');
+    status.textContent = "Conectando...";
+    status.className = "status-badge status-loading";
+
+    // Enviamos 'filterPath' como quinto argumento a la API de Python
+    window.pywebview.api.iniciar_tail_unix(host, parseInt(port), user, pass, filepath, filterPath)
+        .then(response => {
+            if (response.status === "success") {
+                status.textContent = "Monitoreo";
+                status.className = "status-badge status-connected";
+            } else {
+                alert("Error al conectar: " + response.message);
+                detenerTailUnix();
+            }
+        })
+        .catch(err => {
+            alert("Error de comunicación de la API: " + err);
+            detenerTailUnix();
+        });
+}
+
+    function detenerTailUnix() {
+        // Volver los controles a su estado inicial
+        document.getElementById('btn-start-tail').disabled = false;
+        document.getElementById('btn-stop-tail').disabled = true;
+        
+        const status = document.getElementById('unix-status');
+        status.textContent = "Desconectado";
+        status.className = "status-badge status-disconnected";
+
+        // Invocar detención en el backend para cerrar el canal SSH de forma limpia
+        window.pywebview.api.detener_tail_unix();
+    }
+
+    function limpiarConsolaUnix() {
+        document.getElementById('unix-console-output').innerHTML = '';
+    }
+
+    /**
+     * FUNCIÓN GLOBAL: Invocada directamente desde Python usando evaluate_js
+     * Agrega líneas a la consola en tiempo real respetando el elemento <pre>
+     */
+    window.agregarLineaLogUnix = function(lineaTexto) {
+        const consoleOutput = document.getElementById('unix-console-output');
+        
+        // Crear el nodo <pre> dinámico para mantener la grilla y tabulaciones fijas
+        const preElement = document.createElement('pre');
+        preElement.style.whiteSpace = "pre";
+        preElement.style.wordBreak = "normal";
+        preElement.style.overflowX = "auto";
+        
+        // Usamos textContent para sanitizar posibles caracteres conflictivos de HTML (<, >, &)
+        preElement.textContent = lineaTexto;
+        
+        consoleOutput.appendChild(preElement);
+
+        // Scroll automático si el usuario no subió manualmente a revisar
+        if (autoScrollUnix) {
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+    };
+
+    // Detectar si el usuario hace scroll hacia arriba para pausar el auto-scroll
+    const consoleDiv = document.getElementById('unix-console-output');
+    consoleDiv.addEventListener('scroll', () => {
+        // Si está al fondo, activamos autoscroll; si sube, lo pausamos temporalmente para dejarlo leer
+        const alFondo = consoleDiv.scrollHeight - consoleDiv.scrollTop <= consoleDiv.clientHeight + 20;
+        autoScrollUnix = alFondo;
+    });
+
+// Cambia dinámicamente el placeholder y label según la operación criptográfica elegida
+        function adaptarFormularioCripto() {
+            const operacion = document.getElementById('criptoOperacion').value;
+            const label = document.getElementById('lblCriptoInput');
+            const input = document.getElementById('criptoInputText');
+            
+            input.value = ""; // Limpiamos el campo
+            
+            if (operacion === "DESENCRIPTAR_PAN") {
+                label.textContent = "PAN Encriptado en Base64 / Hex";
+                input.placeholder = "Ej: dG9kb2NhcmRfYWVzX2NyeXB0bw==";
+            } else if (operacion === "ENCRIPTAR_CVV2") {
+                label.textContent = "CVV2 Plano (3 dígitos)";
+                input.placeholder = "Ej: 123";
+            } else if (operacion === "DESENCRIPTAR_CVV2") {
+                label.textContent = "CVV2 Encriptado";
+                input.placeholder = "Ingrese el token cifrado del CVV2...";
+            }
+        }
+
+        // Envía el texto y la operación al Backend unificado
+        async function ejecutarOperacionCripto() {
+            const operacion = document.getElementById('criptoOperacion').value;
+            const valorInput = document.getElementById('criptoInputText').value.trim();
+            const outputDiv = document.getElementById('resultadoCriptoOutput');
+
+            if (!valorInput) {
+                alert("Por favor, ingrese un valor para procesar.");
+                return;
+            }
+
+            outputDiv.innerHTML = "Procesando algoritmo criptográfico corporativo...";
+            outputDiv.style.color = "var(--text)";
+
+            if (window.pywebview && window.pywebview.api) {
+                try {
+                    const respuesta = await window.pywebview.api.btn_procesar_cripto_click(operacion, valorInput);
+                    
+                    if (respuesta.status === "success") {
+                        outputDiv.style.color = "#4ade80"; // Verde éxito
+                        outputDiv.innerHTML = `➔ Resultado: ${respuesta.resultado}`;
+                    } else {
+                        outputDiv.style.color = "#f87171"; // Rojo error
+                        outputDiv.innerHTML = `❌ Error: ${respuesta.message}`;
+                    }
+                } catch (err) {
+                    outputDiv.style.color = "#f87171";
+                    outputDiv.innerHTML = `❌ Error de comunicación con la API: ${err}`;
+                }
+            }
+        }
+
+
+    </script>
+</body>
+</html>
